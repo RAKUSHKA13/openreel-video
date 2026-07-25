@@ -41,6 +41,11 @@ function App() {
   const createNewProject = useProjectStore((state) => state.createNewProject);
   const { showDialog, availableSaves, recover, dismiss, clearAll } = useProjectRecovery();
 
+  // Вбудований режим (?embed=1 у hash) — не показувати діалог відновлення проєкту.
+  const isEmbed =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.hash.split("?")[1] || "").get("embed") === "1";
+
   const { route, params, navigate, parsedDimensions, fps } = useRouter();
   const hasHandledInitialRoute = useRef(false);
 
@@ -151,7 +156,7 @@ function App() {
           onClose={closeModal}
         />
         <SearchModal isOpen={activeModal === "search"} onClose={closeModal} />
-        {showDialog && availableSaves.length > 0 && (
+        {!isEmbed && showDialog && availableSaves.length > 0 && (
           <RecoveryDialog
             saves={availableSaves}
             onRecover={async (saveId) => {

@@ -34,6 +34,7 @@ import {
   initializeTransitionBridge,
   disposeTransitionBridge,
 } from "../../bridges/transition-bridge";
+import { initHostEmbedBridge } from "../../bridges/host-embed-bridge";
 
 // Timeline area (bottom band) is sized as a vh fraction so the
 // top workspace (media | stage | inspector) gets the rest. The grid
@@ -149,6 +150,10 @@ const useEngineInitialization = () => {
         if (!isMounted) return;
 
         setBridgesReady(true);
+
+        // Вбудований режим (iframe): редактор і мости готові — вмикаємо
+        // host-міст і сповіщаємо батьківське вікно, що можна слати відео.
+        initHostEmbedBridge();
       } catch (error) {
         console.error("Failed to initialize engines/bridges:", error);
         if (isMounted) {

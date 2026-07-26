@@ -68,7 +68,7 @@ function fileNameFromUrl(url: string, fallback: string): string {
 
 async function urlToFile(url: string, name: string): Promise<File> {
   const res = await fetch(url, { mode: "cors", credentials: "omit" });
-  if (!res.ok) throw new Error(`HTTP ${res.status} під час завантаження ${url}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} while fetching ${url}`);
   const blob = await res.blob();
   const type = blob.type || guessMimeType(name);
   return new File([blob], name, { type });
@@ -86,7 +86,7 @@ async function itemToFile(item: LoadMediaItem, index: number): Promise<File> {
     return new File([raw], name, { type });
   }
   if (item.url) return urlToFile(item.url, name);
-  throw new Error("елемент без blob і без url");
+  throw new Error("item has neither blob nor url");
 }
 
 async function loadMedia(items: LoadMediaItem[]): Promise<void> {
@@ -106,7 +106,7 @@ async function loadMedia(items: LoadMediaItem[]): Promise<void> {
     const label = (item && item.name) || `#${i + 1}`;
     if (!item || (!item.blob && !item.url)) {
       failed++;
-      errors.push(`${label}: порожній елемент`);
+      errors.push(`${label}: empty item`);
       continue;
     }
     try {
@@ -117,7 +117,7 @@ async function loadMedia(items: LoadMediaItem[]): Promise<void> {
         loaded++;
       } else {
         failed++;
-        const msg = result?.error?.message || "невідома помилка import";
+        const msg = result?.error?.message || "unknown import error";
         errors.push(`${label}: ${msg}`);
         console.error("[openreel-embed] import не вдався:", label, result);
       }

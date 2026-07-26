@@ -1,11 +1,15 @@
 /**
  * host-embed-bridge — дозволяє батьківському вікну (напр. nodeflow) вбудувати
- * OpenReel через <iframe> і підвантажити відео за URL через postMessage.
+ * OpenReel через <iframe> і підвантажити медіа через postMessage.
  *
  * Протокол повідомлень:
- *   parent → iframe:  { type: "openreel:load-media", items: [{ url, name? }, ...] }
- *   iframe → parent:  { type: "openreel:editor-ready" }                 // готові приймати
- *                     { type: "openreel:media-loaded", loaded, failed } // після завантаження
+ *   parent → iframe:  { type: "openreel:ping" }                          // "ти вже живий?"
+ *                     { type: "openreel:load-media", items: [...] }
+ *        item: { name?, blob? , url? , mime? }
+ *        — blob (Blob/File/ArrayBuffer) кращий за url: не залежить від CORS,
+ *          бо файл качає батьківське вікно зі свого origin.
+ *   iframe → parent:  { type: "openreel:editor-ready" }                  // готові приймати
+ *                     { type: "openreel:media-loaded", loaded, failed, errors }
  *
  * Використання: викликати initHostEmbedBridge() ОДИН раз, коли редактор і всі
  * мости вже ініціалізовані (див. EditorInterface, після setBridgesReady(true)).
@@ -13,11 +17,14 @@
 import { useProjectStore } from "../stores/project-store";
 
 interface LoadMediaItem {
-  url: string;
+  url?: string;
   name?: string;
+  mime?: string;
+  blob?: Blob | ArrayBuffer;
 }
 
 let initialized = false;
+let ready = false;
 let loading = false;
 
 /** Чи ми всередині iframe (є батьківське вікно, відмінне від нашого). */
@@ -67,6 +74,21 @@ async function urlToFile(url: string, name: string): Promise<File> {
   return new File([blob], name, { type });
 }
 
+/** Перетворює елемент протоколу на File: спершу готовий blob, інакше качаємо url. */
+async function itemToFile(item: LoadMediaItem, index: number): Promise<File> {
+  const name =
+    item.name || (item.url ? fileNameFromUrl(item.url, `clip-${index + 1}.mp4`) : `clip-${index + 1}.mp4`);
+
+  if (item.blob) {
+    const raw =
+      item.blob instanceof Blob ? item.blob : new Blob([item.blob as ArrayBuffer]);
+    const type = item.mime || raw.type || guessMimeType(name);
+    return new File([raw], name, { type });
+  }
+  if (item.url) return urlToFile(item.url, name);
+  throw new Error("елемент без blob і без url");
+}
+
 async function loadMedia(items: LoadMediaItem[]): Promise<void> {
   if (loading) return;
   loading = true;
@@ -77,51 +99,72 @@ async function loadMedia(items: LoadMediaItem[]): Promise<void> {
 
   let loaded = 0;
   let failed = 0;
+  const errors: string[] = [];
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    if (!item || !item.url) {
+    const label = (item && item.name) || `#${i + 1}`;
+    if (!item || (!item.blob && !item.url)) {
       failed++;
+      errors.push(`${label}: порожній елемент`);
       continue;
     }
-    const name = item.name || fileNameFromUrl(item.url, `clip-${i + 1}.mp4`);
     try {
-      const file = await urlToFile(item.url, name);
+      const file = await itemToFile(item, i);
       const result = await importMedia(file);
       if (result && result.success && result.actionId) {
         await addClipToNewTrack(result.actionId);
         loaded++;
       } else {
         failed++;
-        console.error("[openreel-embed] import не вдався:", name, result && result.error);
+        const msg = result?.error?.message || "невідома помилка import";
+        errors.push(`${label}: ${msg}`);
+        console.error("[openreel-embed] import не вдався:", label, result);
       }
     } catch (err) {
       failed++;
-      console.error("[openreel-embed] завантаження не вдалося:", name, err);
+      errors.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
+      console.error("[openreel-embed] завантаження не вдалося:", label, err);
     }
   }
 
   loading = false;
-  postToParent({ type: "openreel:media-loaded", loaded, failed });
+  postToParent({ type: "openreel:media-loaded", loaded, failed, errors });
 }
 
 function onMessage(event: MessageEvent): void {
   const data = event.data;
   if (!data || typeof data !== "object") return;
+
+  if (data.type === "openreel:ping") {
+    // Батько питає, чи ми вже готові. Відповідаємо лише коли редактор змонтовано.
+    if (ready) postToParent({ type: "openreel:editor-ready" });
+    return;
+  }
   if (data.type === "openreel:load-media" && Array.isArray(data.items)) {
     void loadMedia(data.items as LoadMediaItem[]);
   }
 }
 
 /**
- * Вмикає слухач postMessage і повідомляє батьківське вікно, що редактор готовий
- * приймати відео. Безпечно викликати навіть поза iframe (тоді просто нічого не
- * робить корисного). Ідемпотентно.
+ * Слухач postMessage вмикається якнайраніше (щоб не проґавити ping, поки
+ * редактор ще монтується). Викликається з main.tsx / App.
  */
-export function initHostEmbedBridge(): void {
+export function installHostEmbedListener(): void {
   if (initialized || typeof window === "undefined") return;
   initialized = true;
   window.addEventListener("message", onMessage);
+}
+
+/**
+ * Повідомляє батьківське вікно, що редактор готовий приймати відео.
+ * Викликати, коли всі мости ініціалізовані (EditorInterface, після
+ * setBridgesReady(true)). Ідемпотентно.
+ */
+export function initHostEmbedBridge(): void {
+  if (typeof window === "undefined") return;
+  installHostEmbedListener();
+  ready = true;
   postToParent({ type: "openreel:editor-ready" });
 }
 

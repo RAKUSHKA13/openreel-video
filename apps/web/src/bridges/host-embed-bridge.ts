@@ -119,12 +119,12 @@ async function loadMedia(items: LoadMediaItem[]): Promise<void> {
         failed++;
         const msg = result?.error?.message || "unknown import error";
         errors.push(`${label}: ${msg}`);
-        console.error("[openreel-embed] import не вдався:", label, result);
+        console.error("[openreel-embed] import failed:", label, result);
       }
     } catch (err) {
       failed++;
       errors.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
-      console.error("[openreel-embed] завантаження не вдалося:", label, err);
+      console.error("[openreel-embed] loading failed:", label, err);
     }
   }
 

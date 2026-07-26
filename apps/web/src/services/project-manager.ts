@@ -1,5 +1,6 @@
 import type { Project, ProjectSettings } from "@openreel/core";
 import { v4 as uuidv4 } from "uuid";
+import { canUseFilePicker } from "../bridges/host-embed-bridge";
 
 interface FilePickerAcceptType {
   description: string;
@@ -267,7 +268,9 @@ class ProjectManager {
   }
 
   async saveProjectAs(project: Project): Promise<boolean> {
-    if (!("showSaveFilePicker" in window)) {
+    // У вбудованому (iframe) режимі системний діалог "Зберегти як…" заборонений
+    // браузером — падаємо на звичайне завантаження файлу.
+    if (!canUseFilePicker()) {
       return this.downloadProject(project);
     }
 

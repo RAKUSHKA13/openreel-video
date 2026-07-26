@@ -172,3 +172,32 @@ export function initHostEmbedBridge(): void {
 export function isEmbeddedMode(): boolean {
   return isEmbedded();
 }
+
+/**
+ * Чи можна показувати системний діалог "Зберегти як…".
+ * У крос-доменному iframe браузер його забороняє (SecurityError), тому там
+ * завжди йдемо через deliverFile().
+ */
+export function canUseFilePicker(): boolean {
+  return typeof window !== "undefined" && "showSaveFilePicker" in window && !isEmbedded();
+}
+
+/**
+ * Віддає готовий файл користувачу. У вбудованому режимі передає Blob
+ * батьківському вікну (воно збереже файл зі свого рівня — там завантаження
+ * не блокуються), інакше — звичайне посилання на завантаження.
+ */
+export function deliverFile(blob: Blob, filename: string): void {
+  if (isEmbedded()) {
+    postToParent({ type: "openreel:save-file", name: filename, blob, mime: blob.type });
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}

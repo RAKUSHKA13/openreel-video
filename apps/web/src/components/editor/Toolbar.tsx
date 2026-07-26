@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useEffect, useMemo } from "react";
+import { canUseFilePicker, deliverFile } from "../../bridges/host-embed-bridge";
 import {
   ChevronDown,
   FileVideo,
@@ -255,7 +256,7 @@ export const Toolbar: React.FC = () => {
     };
     const mime = mimeMap[ext] || "application/octet-stream";
 
-    if ("showSaveFilePicker" in window) {
+    if (canUseFilePicker()) {
       const handle = await (window as unknown as {
         showSaveFilePicker: (opts: unknown) => Promise<FileSystemFileHandle>;
       }).showSaveFilePicker({
@@ -283,14 +284,7 @@ export const Toolbar: React.FC = () => {
 
     const triggerDownload = () => {
       const blob = new Blob([buffer.slice(0, length)], { type: mime });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      deliverFile(blob, filename);
     };
 
     const writeBytes = (bytes: Uint8Array, position: number) => {
@@ -370,17 +364,10 @@ export const Toolbar: React.FC = () => {
           }
 
           if (finalResult?.success && finalResult.blob) {
-            if ("showSaveFilePicker" in window) {
+            if (canUseFilePicker()) {
               await finalResult.blob.stream().pipeTo(writable as unknown as WritableStream<Uint8Array>);
             } else {
-              const url = URL.createObjectURL(finalResult.blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `${project.name || "export"}.wav`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
+              deliverFile(finalResult.blob, `${project.name || "export"}.wav`);
             }
             setExportState((prev) => ({ ...prev, complete: true, phase: "Saved!" }));
             track(AnalyticsEvents.PROJECT_EXPORTED, {
